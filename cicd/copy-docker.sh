@@ -2,8 +2,8 @@
 # Copy from one registry to another
 
 SRC="gcr.io/engineering-devops"
-DEST="forgerock-docker-internal.bintray.io/forgerock"
-TAG="6.5.0"
+DEST="gcr.io/forgerock-io"
+TAG="6.5.1"
 
 if [ -n "$1" ];
     then TAG=$1

@@ -4,6 +4,8 @@
 # TODO: Deprecate this when we get boot from json support
 set -x
 
+FBC_ENABLED="${FBC_ENABLED:-false}"
+
 BASE_DN="${BASE_DN:-ou=am-config}"
 
 # Configuration store LDAP. Defaults to the configuration store stateful set running in the same namespace.
@@ -13,12 +15,18 @@ CONFIGURATION_LDAP="${CONFIGURATION_LDAP:-configstore-0.configstore:1389}"
 DIR_MANAGER_PW_FILE=${DIR_MANAGER_PW_FILE:-/var/run/secrets/configstore/dirmanager.pw}
 
 OPENAM_HOME=${OPENAM_HOME:-/home/forgerock/openam}
+# Contexts
+CONFIG_CTX="${OPENAM_HOME}/config"
+SECURITY_CTX="${OPENAM_HOME}/security"
+SECRETS_CTX="${SECURITY_CTX}/secrets"
+KEYSTORES_CTX="${SECURITY_CTX}/keystores"
+KEYS_CTX="${SECURITY_CTX}/keys"
 
 # Test the configstore to see if it contains a configuration. Return 0 if configured.
 is_configured() {
     echo "Testing if the configuration store is configured with an AM installation"
     test="ou=services,$BASE_DN"
-    r=`ldapsearch -y ${DIR_MANAGER_PW_FILE} -A -H "ldap://${CONFIGURATION_LDAP}" -D "cn=Directory Manager" -s base -l 5 -b "$test"  > /dev/null 2>&1`
+    r=`ldapsearch -y ${DIR_MANAGER_PW_FILE} -A -H "ldap://${CONFIGURATION_LDAP}" -D "uid=admin" -s base -l 5 -b "$test"  > /dev/null 2>&1`
     status=$?
     echo "Is configured exit status is $status"
     return $status
@@ -29,26 +37,31 @@ is_configured() {
 # If you ever change the am context (not recommended), you need to copy these files to OPENAM_HOME/$context
 copy_secrets() {
     echo "Copying secrets"
-    mkdir -p "${OPENAM_HOME}/secrets"
-    cp  -L /var/run/secrets/openam/.keypass "${OPENAM_HOME}"
-    cp  -L /var/run/secrets/openam/.storepass "${OPENAM_HOME}"
-    cp  -L /var/run/secrets/openam/keystore.jceks "${OPENAM_HOME}"
-    cp  -L /var/run/secrets/openam/keystore.jks "${OPENAM_HOME}"
-    cp  -L /var/run/secrets/openam/authorized_keys "$OPENAM_HOME"
-    cp  -L /var/run/secrets/openam/openam_mon_auth "${OPENAM_HOME}"
+    mkdir -p "${SECRETS_CTX}/default"
+    cp  -L /var/run/secrets/openam/.keypass "${SECRETS_CTX}/default"
+    cp  -L /var/run/secrets/openam/.storepass "${SECRETS_CTX}/default"
+    mkdir -p "${KEYSTORES_CTX}"
+    cp  -L /var/run/secrets/openam/keystore.jceks "${KEYSTORES_CTX}"
+    mkdir -p "${KEYS_CTX}/amster"
+    cp  -L /var/run/secrets/openam/authorized_keys "${KEYS_CTX}/amster"
+    cp  -L /var/run/secrets/openam/openam_mon_auth "${SECURITY_CTX}"
     # The new AM secrets API specifies a directory for password secrets. Each file is a key, and the contents are the secret value
     # You can NOT use a leading dot 
     # In your global -> Secret Stores -> default-password-store - configure /home/forgerock/openam/secrets as your Directory
-    cp -L /var/run/secrets/openam/.keypass "${OPENAM_HOME}/secrets/entrypass"
-    cp -L /var/run/secrets/openam/.storepass "${OPENAM_HOME}/secrets/storepass"
+    mkdir -p "${SECRETS_CTX}/encrypted"
+    cp -L /var/run/secrets/openam/keypass "${SECRETS_CTX}/encrypted/entrypass"
+    cp -L /var/run/secrets/openam/storepass "${SECRETS_CTX}/encrypted/storepass"
 }
 
 bootstrap() {
-    if is_configured;
-    then
-        echo "Configstore is present. Creating bootstrap"
-        mkdir -p "${OPENAM_HOME}/openam"
-        cp -L /var/run/openam/*.json "$OPENAM_HOME"
+    if [[ "${FBC_ENABLED}" == "true" ]]; then
+        echo "Skipping copying of boot.json as it should be provided with file-based config"
+        return
+    fi
+    if is_configured; then
+        echo "Configstore is present. Copying bootstrap"
+        mkdir -p ${CONFIG_CTX}
+        cp -L /var/run/openam/boot.json "${CONFIG_CTX}"
     fi
 }
 

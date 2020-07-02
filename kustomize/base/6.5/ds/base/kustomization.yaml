@@ -1,0 +1,10 @@
+commonLabels:
+  vendor: forgerock
+  app: ds
+  # Used by prometheus as a label selector
+  component: ds
+  affinity: directory
+resources:
+- configmap.yaml
+- service.yaml
+- statefulset.yaml

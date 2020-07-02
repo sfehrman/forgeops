@@ -1,91 +1,73 @@
-# Docker Build Files for ForgeRock Identity Platform
+# Docker Images for the ForgeRock Platform
 
-## About
+This directory contains Dockerfiles used to build and deploy the ForgeRock platform.
 
-You will need to modify the Dockerfiles here to suit your needs. The Dockerfiles
-are changing often as we find better ways to build these images for a wide range
- of requirements.
+There are Dockerfiles that are specific to a release (under `6.5` and `7.0` )
+as well as Dockerfiles that are common across releases.
 
-## Binary Downloads
+It is important to understand that many of the Dockerfiles do not contain the required configuration files needed to run the platform. The `bin/config.sh` script must be used to initialize the configuration. See the top level [README](../README.md).
 
-The forgerock/downloader docker image downloads artifacts from the ForgeRock maven repository. This downloader image
-is the first stage in a multistage build process. The downloader image is unique to each user as it embeds 
-the API_KEY needed to pull images from ForgeRock's Artifactory reposistory.  
+## Common Docker Images
 
-IMPORTANT: *YOU MUST BUILD THIS IMAGE FOR YOUR OWN ENVIRONMENT!!*
-
-To build this image you need a API Key for the maven repository.
-
-ForgeRock customers should follow the backstage procedure for maven access.  
-
-Internal users can obtain their API keys as follows:
-
-* Navigate to http://docker-public.forgerock.io/repo/webapp/#/profile
-* Log in. The User Profile page should appear.
-* Re-enter your password in the Current Password field and click Unlock.
-* Click Show API Key (the "eye" icon to the right of the API Key field).
-* Copy your API Key.
-
-Export an environment variable API_KEY=your_api_key before attempting to build Docker images using the downloader. For more information, see the  downloader/download script.
-
-See the downloader-sample/ for an alternative way of sourcing ForgeRock binaries. 
+* `java-11`: The foundational Java 11 image used to build ForgeRock DS, IDM and IG.
+* `cli-tools`: Wraps up cluster provisiong tools in a container.
+* `forgeops-secrets`: Docker image that generates random secrets for the platform.
+* `gatling`: Gatling image used to benchmark and exercise the platform.
 
 
-## How to Run These Images
+Dockerfiles that will soon be deprecated as they are no longer required by kustomize, include:
 
-These images are intended to be
-orchestrated using Kubernetes. They depend on external volumes being
-mounted for secrets, configuration and persistent data. As such, they are not supported in non Kubernetes environments (docker compose, docker swarm, etc.)
+* `util`:  Used in init containers to check for DS status.
+* `git`: Used to git clone configuration at runtime.
 
+## Dockerfiles for Release 7.0
 
-## Image Builds
+For the 7.x release, the base Dockerfiles for ForgeRock AM, IDM, DS and IG are built upstream in their respective product repositories. These images are built
+and pushed  to `gcr.io/forgerock-io/`.  The source for the Dockerfiles can be
+found in the respective product source code repository. In general, these base images have
+the product binary laid down and are "ready to run", but do not contain any configuration.
 
-The product images are built automatically (using Conatainer Builder) when a commit is made to ForgeOps. These images are pushed to https://bintray.com/forgerock.
+The Dockerfiles in the [docker/7.0](7.0/) directory are the "child" images that derive from the base
+image and overlay any of your customizations and configuration files. These Dockerfiles
+are built by skaffold and pushed to your Kubernetes cluster.
 
+## Docker images for 6.5
 
-## build.sh
+The [docker/6.5](6.5) directory contains all the Dockerfiles required for ForgeRock Platform version 6.5.
 
-The `build.sh` script can be used for one-off builds during development. For example:
+### 6.5 Base Images
 
-```
-./build.sh openam 
-```
-Will build openam using the default tag and registry.
+The base image folders (for example, am-base) are the "parent" Docker images used by the derived child image (example, am). You
+must build your own base images as a pre-requistite to deploying the child images.
 
-## CSV Format
+The images do not contain ForgeRock binaries. You must download the appropriate war or zip file
+artifact from [ForgeRock Backstage](https://backstage.forgerock.com/downloads) and copy
+the artifact to the appropriate -base folder. The artifact should be named according to the following table:
 
-build.sh can also use a CSV file to determine which images to build and how to tag those images. For example:
+| base image | artifact name |
+| --- | --- |
+openam-base | openam.war
+amster-base | amster.zip
+ds-base | opendj.zip
+idm-base | openidm.zip
+ig-base | openig.war
 
-```build.sh -C csv/dev.csv -a -p -d``` 
+A skaffold profile is  provided that can build the base images:
 
-Will authenticate (-a option) to the docker registry, build, tag and push (-p option) all images found in dev.csv. The -d option is a "dry-run" which will show you the commands to be executed but will not peform any builds.
-
-The CSV option is intended for automating the build process.
-
-The CSV input file is parsed by bash, and is is *very* finicky about formatting. There are no comments allowed, no extra spaces after
-commas, and the file must end in a newline.
-
-The format of the CSV file is:
-
-```csv
-folder,artifact,tag
-
+```bash
+# The default-repo should be replaced with your own repository that hosts your images
+skaffold -f skaffold-6.5.yaml -p base --default-repo gcr.io/engineering-devops build
 ```
 
-Where:
+For more information please refer to the [DevOps documentation](https://backstage.forgerock.com/docs/forgeops/6.5/sr-guide/#chap-sr-customization-docker).
 
-* folder - is the name of the docker/ folder to build
-* artifact - is the version of the artifact in Artifactory. For example, for openam - 6.5.1-p2
-* tag - a tag to apply to the image.
+### 6.5 Child Images
 
-If the artifact does not change, but the docker image is significantly different, the suggested approach is to add an additional qualifier to the tag. For example, if the current artifact is `6.5.0-M129.1`  and the docker image is changed, the new tag becomes `6.5.0-M129.1.2`.
+The 6.5 final images take the base image (described above) and overlay specific customizations
+on top of the base. The `bin/config.sh` script is used to copy in configuration files to the
+child images, which are packaged in the final Docker image before being deployed with Kustomize.
 
+## See Also
 
- See the build.sh script for a complete list of options.
-
-## Process to update a dependency
-
-The file csv/dev.csv specifies the artifacts used in our CI Cloudbuild pipeline. To update to a new milestone, edit
-this file, and update the milestone (for example, for idm change 6.5.0-M2 to 6.5.0-M3). Commit the change, and submit a new PR. The build process will build and tag the new image. You should also update the corresponding helm charts.
-
-See `subtmit.sh` for creating one off builds of an artifact.
+* [README.md](../README.md)
+* [Directory Server Image customization](7.0/ds/README-DS.md)
